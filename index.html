@@ -240,7 +240,8 @@ body { max-width: 480px; margin: 0 auto; padding: 0 0 100px; min-height: 100dvh;
 <div class="view" id="view-settings">
   <div class="section-label" style="margin-top:4px">Conexión</div>
   <div id="conn-status" class="config-status err">Sin configurar — los datos se guardan solo en este dispositivo</div>
-  <button style="width:100%;padding:11px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);color:var(--text2);font-size:14px;cursor:pointer;margin-bottom:20px" onclick="showConfigModal()">⚙ Configurar Google Sheets sync</button>
+  <button style="width:100%;padding:11px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);color:var(--text2);font-size:14px;cursor:pointer;margin-bottom:8px" onclick="showConfigModal()">⚙ Configurar Google Sheets sync</button>
+  <button id="export-all-btn" style="width:100%;padding:11px;background:var(--accent-bg);border:1px solid var(--accent-dim);border-radius:var(--r);color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;margin-bottom:20px;display:none" onclick="pushAllToSheets()">↑ Subir todo a Google Sheets</button>
 
   <div class="section-label">Ejercicios por día</div>
   <div id="settings-days"></div>
@@ -401,15 +402,49 @@ async function pushToSheets(session, dayId) {
   } catch(e) {}
 }
 
+async function pushAllToSheets() {
+  if (!state.scriptUrl) { toast('Primero configurá la URL de sync'); return; }
+  const btn = document.getElementById('export-all-btn');
+  const orig = btn.textContent;
+  btn.textContent = 'Subiendo...';
+  btn.disabled = true;
+  let total = 0, ok = 0;
+  for (const [dayId, sessions] of Object.entries(state.sessions)) {
+    for (const session of sessions) {
+      total++;
+      try {
+        await fetch(state.scriptUrl, {
+          method: 'POST',
+          body: JSON.stringify({ action: 'saveSession', dayId, ...session })
+        });
+        ok++;
+      } catch(e) {}
+    }
+  }
+  btn.textContent = orig;
+  btn.disabled = false;
+  toast(`✓ ${ok} de ${total} sesiones subidas`);
+}
+
 // ─── INIT ────────────────────────────────────────────────────────────────
 load();
 if (!state.startDate) { state.startDate = new Date().toISOString().split('T')[0]; save(); }
 updateWeekBadge();
 renderDayGrid();
 renderSettings();
+function updateSyncUI() {
+  if (state.scriptUrl) {
+    document.getElementById('conn-status').className = 'config-status ok';
+    document.getElementById('conn-status').textContent = '✓ Sincronizado con Google Sheets';
+    document.getElementById('export-all-btn').style.display = 'block';
+  } else {
+    document.getElementById('conn-status').className = 'config-status err';
+    document.getElementById('conn-status').textContent = 'Sin configurar — los datos se guardan solo en este dispositivo';
+    document.getElementById('export-all-btn').style.display = 'none';
+  }
+}
 if (state.scriptUrl) {
-  document.getElementById('conn-status').className = 'config-status ok';
-  document.getElementById('conn-status').textContent = '✓ Sincronizado con Google Sheets';
+  updateSyncUI();
   syncWithSheets();
 }
 
@@ -764,9 +799,8 @@ function saveScriptUrl() {
   state.scriptUrl = url || null;
   save();
   hideConfigModal();
+  updateSyncUI();
   if (url) {
-    document.getElementById('conn-status').className = 'config-status ok';
-    document.getElementById('conn-status').textContent = '✓ Sincronizado con Google Sheets';
     syncWithSheets();
     toast('Conexión guardada');
   }
